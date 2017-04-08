@@ -23,7 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\strblob.cpp" />
-    <ClCompile Include="test\test_strblob.cpp" />
+    <ClCompile Include="test\test.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{44952750-A2EE-490D-92D8-43CBCEA0A311}</ProjectGuid>

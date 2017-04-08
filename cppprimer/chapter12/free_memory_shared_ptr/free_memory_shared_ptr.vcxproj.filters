@@ -17,7 +17,7 @@
     <ClCompile Include="src\strblob.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="test\test_strblob.cpp">
+    <ClCompile Include="test\test.cpp">
       <Filter>test</Filter>
     </ClCompile>
   </ItemGroup>
