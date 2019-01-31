@@ -1,0 +1,434 @@
+muduo阅读
+
+base部分
+
+1. MutexLock 
+对mutex的封装，提供更友好的接口。另外提供接口标志哪个线程调用了lock。
+lock
+unlock
+
+2. MutexLockGuard
+用RAII的方式管理Mutex。创建时lock，析构时unlock，防止代码复杂或者出现异常的时候，没有unlock。
+
+3. Condition
+对condition的封装，提供更友好的接口。
+wait
+notify
+notifyAll
+
+4. Singleton
+单例模版类
+使用pthread_once
+int pthread_once(pthread_once_t *once_control, void (*init_routine) (void))；
+功能：本函数使用初值为PTHREAD_ONCE_INIT的once_control变量保证init_routine()函数在本进程执行序列中仅执行一次。
+里面有个has_no_destroy完全不懂，应该是检查T有没有destroy函数.
+
+[tips]
+mutable 易变的，在const函数中也可以改变该变量
+
+5. CountDownLatch
+使用Mutex和Condition实现
+count_：初始赋值大于0。
+countDown：函数给count_减1，到0时notifyAll。
+wait：count_为0时wait。
+
+6. BlockingQueue
+阻塞队列
+使用Mutex Condition deque
+接口
+put notify
+take wait
+size
+要点
+while (queue_.empty())
+{
+  notEmpty_.wait();
+}
+wait的唤醒有可能不是来自notify，所以wait要包在while里面，条件检测是queue_.empty。
+
+7. BoundedBlockingQueue
+有界阻塞队列
+queue使用的是boost::circular_buffer<T>
+take put都有可能阻塞。
+
+
+8. Atomic.h
+只有一个数据成员T value_的类，封装一系列原子操作函数
+并且定义了两种常用的类型
+
+typedef detail::AtomicIntegerT<int32_t> AtomicInt32;
+typedef detail::AtomicIntegerT<int64_t> AtomicInt64;
+
+get ->
+bool __sync_bool_compare_and_swap (type *ptr, type oldval type newval, ...)
+type __sync_val_compare_and_swap (type *ptr, type oldval type newval, ...)
+These builtins perform an atomic compare and swap. That is, if the current value of *ptr is oldval, then write newval into *ptr.
+The “bool” version returns true if the comparison is successful and newval was written. The “val” version returns the contents of *ptr before the operation. 
+
+getAndSet ->
+type __sync_lock_test_and_set (type *ptr, type value, ...)
+This builtin, as described by Intel, is not a traditional test-and-set operation, but rather an atomic exchange operation. It writes value into *ptr, and returns the previous contents of *ptr.
+Many targets have only minimal support for such locks, and do not support a full exchange operation. In this case, a target may support reduced functionality here by which the only valid value to store is the immediate constant 1. The exact value actually stored in *ptr is implementation defined.
+
+This builtin is not a full barrier, but rather an acquire barrier. This means that references after the builtin cannot move to (or be speculated to) before the builtin, but previous memory stores may not be globally visible yet, and previous memory loads may not yet be satisfied. 
+
+9. Thread CurrentThread
+Thread 是对pthread接口的封装，提供更友好的接口。
+
+#include <pthread.h>
+int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
+Compile and link with -pthread.
+
+#include <pthread.h>
+int pthread_join(pthread_t thread, void **retval);
+Compile and link with -pthread.
+
+runInThread看不懂
+
+线程独享的变量
+extern __thread int t_cachedTid;
+extern __thread char t_tidString[32];
+extern __thread int t_tidStringLength;
+extern __thread const char* t_threadName;
+
+10. ThreadPool 
+线程池
+std::deque<Task> queue_; 任务队列
+take 从任务队列取一个任务，为空则wait
+run 往任务队列增加一个任务，并且notify
+
+void ThreadPool::runInThread()
+线程函数，先跑initCallback，然后死循环从任务队列取一个任务执行。
+
+void ThreadPool::start(int numThreads)
+起numThreads个线程
+
+11. Timestamp
+时间的封装
+struct timeval tv;
+gettimeofday(&tv, NULL);
+struct tm tm_time;
+gmtime_r(&seconds, &tm_time);
+
+12. LogStream
+重载<< 以各种类型作为参数。
+buf保存log数据
+
+13. Logging
+Logger
+定义了log等级和接口
+每次调用都创建一个logger，打印内容存在LogStream的buf里面，对象离开作用域后析构，这个时候打印。
+
+14. FileUtil
+读写文件的封装
+
+15. LogFile
+写文件，包含滚日志逻辑。(即日志按时间段分割)
+
+16. AsyncLogging
+异步log
+logging线程，把buffer列表里面的内容写到文件。
+提供append接口，内容写入buffer。
+
+17. GzipFile
+zlib库的封装
+
+18. StringPiece
+// A string like object that points into another piece of memory.
+// Useful for providing an interface that allows clients to easily
+// pass in either a "const char*" or a "string".
+
+19. WeakCallback
+弱引用版本的回调函数
+调用的时候，如果弱指针指向的对象还在的话，就调用，否则跳过。
+
+[tips] Traits
+Traits classes 的作用主要是用来为使用者提供类型信息。
+使用模版特化 和 模版偏特化的技术
+
+20. Exception
+异常处理 继承std::exception
+catch后会传入message错误信息
+还定义了trace_保存调用栈，使用了
+#include <execinfo.h>
+int backtrace(void **buffer, int size);
+char **backtrace_symbols(void *const *buffer, int size);
+来实现fillStackTrace
+
+[tip] premake
+PreMake可以自动生成多个平台的MakeFile
+它最大的特点应该是它的工程文件其实是使用LUA语言编写的脚本，这样一来，它的工程文件可以拥有非常强大的表达能力。
+
+net部分
+
+21. SocketsOps
+定义sockets命名空间，简化网络编程底层接口
+setNonBlockAndCloseOnExec 非阻塞+closeOnExec
+sockaddr_cast等 sockaddr_in 与 sockaddr的相互转换
+createNonblockingOrDie 创建一个非阻塞和onCloseExec的socket
+bindOrDie 绑定sockaddr_in
+listenOrDie 监听 
+accept 就是accept，并处理错误
+connect 就是connect
+read 就是read
+write 就是write
+close 就是close
+shutdownWrite 关闭写
+toIpPort 从sockaddr_in取ip:port组成字符串
+toIp 从sockaddr_in取ip
+fromIpPort 将ip和port转成sockaddr_in
+getSocketError 取出socket的错误码
+getLocalAddr 通过fd获取socket本地地址
+getPeerAddr 通过fd获取socket对端地址
+isSelfConnect 判断自连接
+
+22. Socket
+包含sockfd_
+配合InetAddress提供更友好的接口
+
+
+[tip]
+FD_CLOEXEC
+执行exec的时候，把fd关闭（一个进程监听某个端口，fork了一下，子进程也持有这个fd。父进程关闭重开，想再用这个端口，就不行了，因为子进程持有那个fd，还占用这个端口）
+
+SO_KEEPALIVE 
+保持连接检测对方主机是否崩溃，避免（服务器）永远阻塞于TCP连接的输入。
+
+SO_REUSEPORT
+同一用户下，重用port。系统负责负载均衡。
+
+SO_REUSEADDR
+
+23. InetAddress
+sockaddr_in的封装
+
+[tip]
+#include <netinet/in.h>
+struct sockaddr_in {
+    sa_family_t    sin_family; /* address family: AF_INET */
+    in_port_t      sin_port;   /* port in network byte order */
+    struct in_addr sin_addr;   /* internet address */
+    unsigned  char  sin_zero[8];         /* Same size as struct sockaddr */
+};
+
+/* Internet address. */
+struct in_addr {
+    uint32_t       s_addr;     /* address in network byte order */
+};
+
+#include <sys/socket.h>
+struct sockaddr{
+    sa_family_t   sa_family       address family
+    char          sa_data[14]       socket address (variable-length data)
+};
+
+24. Endian
+主机字节序 和 网络字节序的转换
+uint64 uint32 uint16三个版本
+
+25. Buffer tcp连接的读写缓冲区
+
+std::vector<char>
+分三部分
+prependable + readable + writable
+对于应用层读缓冲区
+应用层从readable读
+网络库往writable写
+
+对于应用层写缓冲区
+应用层往writable写
+网络库从readable读
+
+retrieve
+标记已读
+retrieveAsString
+读出字符串
+toStringPiece
+读出所有可读内容
+
+append
+如果能从writeIndex往下写，就写，不行就makeSpace
+makeSpace
+如果空间不足，扩充buffer_
+如果空间足够，把可读内容移动到buffer_最前面，更正readIndex和writeIndex
+
+appendIntxx
+转成网络字节序再append
+readIntxx
+peekIntxx
+读出然后转成主机字节序
+
+shrink
+收缩
+
+inputBuffer，outputBuffer都在io线程读写。
+
+char extrabuf[65536];
+从fd读数据的时候，还不知道里面有多少，不能准确buffer_预分配，
+所以用60多kb的栈上空间，使用readv 和 iovec vec[2]，vec[0]是buffer_
+如果buffer_够用就ok，如果buffer_不够用，就会读到extrabuf，
+然后扩展buffer_空间，再把extrabuf的内容搬到buffer_
+
+[tip]
+#include <string.h>
+void *memchr(const void *s, int c, size_t n);
+scan memory for a character
+
+26. Channel 文件描述符及对其操作的封装
+
+fd_ 文件描述符号
+index_ 在EventLoop中的索引
+events_ 关注的事件
+revents_ 接收到的事件
+
+ReadEventCallback readCallback_
+EventCallback writeCallback_
+EventCallback closeCallback_
+EventCallback errorCallback_
+读、写、关闭、错误的回调
+
+EventLoop* loop_
+事件循环的引用
+
+const int Channel::kReadEvent = POLLIN | POLLPRI;
+const int Channel::kWriteEvent = POLLOUT;
+读写时间定义
+
+handleEvent
+根据revents_事件调用对应的callback。
+
+update
+调用EventLoop的updateChannel去更新Channel的event，清空revent。
+
+27. Poller 轮询器
+ChannelList 轮询对象（包装了fd的对象）
+ChannelMap channels_ fd到对应channel的映射
+EventLoop* ownerLoop_ EventLoop的索引
+
+Poller抽象类 要实现的接口
+轮询接口,取出activeChannels，监听到的活跃事件
+/// Polls the I/O events.
+/// Must be called in the loop thread.
+virtual Timestamp poll(int timeoutMs, ChannelList* activeChannels) = 0;
+
+更新事件接口
+/// Changes the interested I/O events.
+/// Must be called in the loop thread.
+virtual void updateChannel(Channel* channel) = 0;
+
+移除channel接口
+/// Remove the channel, when it destructs.
+/// Must be called in the loop thread.
+virtual void removeChannel(Channel* channel) = 0;
+
+28. PollPoller 用poll实现的poller
+std::vector<struct pollfd> PollFdList pollfds_
+这么用
+int numEvents = ::poll(&*pollfds_.begin(), pollfds_.size(), timeoutMs);
+int savedErrno = errno;
+poll返回后，要for循环检查 pollfds_内是否有事件发生，epoll就不用了。
+
+29. EPollPoller 用epoll实现的poller
+epollfd_ epoll的fd
+与poll不同，epoll不用每次调用时候，都传入所有fd的信息。
+epoll的fd监听事件信息，内核有保存一份。
+
+typedef std::vector<struct epoll_event> EventList;
+EventList events_;
+events_接收epoll_wait的返回，有多少个fd有事件，就给你返回多少个epoll_event。
+
+
+
+30. TcpServer 概述
+主要成员
+EventLoop* loop_
+Acceptor acceptor_
+EventLoopThreadPool threadPool_
+
+流程：
+1. 构造时创建Acceptor，并且与loop_关联
+2. start时调用threadPool_的start，进一步调用threadPool_的 startLoop，开始poll。
+3. 新连接过来，就调threadPool_的getNextLoop，取一个EventLoop与新的连接关联，没有的话，就用主EventLoop。
+
+TcpServer::TcpServer ---> new Acceptor(mainLoop)
+
+TcpServer::start ---> EventLoopThreadPool::start ---> EventLoopThread::startLoop ---> EventLoop::loop
+                 ---> Acceptor::listen
+
+新连接到达 ---> Acceptor::handleRead ---> newConnectionCallback_(TcpServer::newConnection) ---> ioLoop = EventLoopThreadPool::getNextLoop
+                                                                                           ---> 在ioLoop中创建连接
+                                                                                           
+31. TcpConnection
+socket 到 业务代码的连接。
+handleRead设置为Channel的handleRead，检测到读事件后， TcpConnection::handleRead把数据读到读缓存，然后调用业务层设置的messageCallback_
+handleWrite设置为Channel的handleWrite，检测到写事件后，TcpConnection::handleWrite把写缓存的数据写到fd。
+
+32. TcpClient
+
+TcpClient::TcpClient构造 创建Connector ---> Connector，设置TcpClient::newConnection
+TcpClient::connect --->  Connector::start ---> Connector::startInLoop --->  Connector::connect (同步的) ---> Connector::connecting
+连接成功，TcpClient::newConnection，创建TcpConnection，设置各种事件
+
+33. google::protobuf::io::ZeroCopyOutputStream 
+google protobuf 提供的避免内存拷贝的Stream。
+接口Next 申请一块内存，用于写入
+接口BackUp 归还多少内存
+
+34. HttpRequest
+
+Http协议请求的封装
+method url version\r\n
+headers\r\n\r\n
+body
+
+GET /api/team/chats?t=1548830373340 HTTP/1.1
+Host: jsstudio.worktile.com
+Connection: keep-alive
+Accept: application/json, text/plain, */*
+User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36
+Referer: https://jsstudio.worktile.com/messages/chats/5b6e45ac03f26606be53f34e
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh;q=0.9
+
+
+
+35. HttpResponse 
+
+Http协议返回的封装
+
+version statusCode statusMessage\r\n
+headers\r\n\r\n
+body 
+
+HTTP/1.1 200 OK
+Server: nginx/1.11.8
+Date: Wed, 30 Jan 2019 06:39:33 GMT
+Content-Type: application/json; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Res-Host: lc-node-web-02|29676
+ETag: W/"a905-UStKN+J3juHxThHSQ+hZGo6G39c"
+Vary: Accept-Encoding
+Content-Encoding: gzip
+X-Frame-Options: SAMEORIGIN
+
+appendToBuffer
+将协议返回内容依次写入缓冲区
+
+36. HttpContext
+包含HttpRequest 和 HttpRequestParseState
+管理Http协议请求解析的各个阶段
+
+37. HttpServer
+TcpServer
+
+38. ProtobufCodecLiteT
+void ProtobufCodecLite::fillEmptyBuffer(muduo::net::Buffer* buf,
+                                        const google::protobuf::Message& message)
+利用 message提供的接口，把数据序列化，拷贝到buf。
+
+ProtobufCodecLite::ErrorCode ProtobufCodecLite::parse(const char* buf,
+                                                      int len,
+                                                      ::google::protobuf::Message* message)
+                                                      
+利用 message提供的接口，将buf的数据反序列化，成为message对象。
