@@ -1,0 +1,63 @@
+信号相关
+
+First the signals described in the original POSIX.1-1990 standard.
+
+Signal     Value     Action   Comment
+──────────────────────────────────────────────────────────────────────
+SIGHUP        1       Term    Hangup detected on controlling terminal
+							 or death of controlling process
+SIGINT        2       Term    Interrupt from keyboard
+SIGQUIT       3       Core    Quit from keyboard
+SIGILL        4       Core    Illegal Instruction
+SIGABRT       6       Core    Abort signal from abort(3)
+SIGFPE        8       Core    Floating-point exception
+SIGKILL       9       Term    Kill signal
+SIGSEGV      11       Core    Invalid memory reference
+SIGPIPE      13       Term    Broken pipe: write to pipe with no
+							 readers; see pipe(7)
+SIGALRM      14       Term    Timer signal from alarm(2)
+SIGTERM      15       Term    Termination signal
+SIGUSR1   30,10,16    Term    User-defined signal 1
+SIGUSR2   31,12,17    Term    User-defined signal 2
+SIGCHLD   20,17,18    Ign     Child stopped or terminated
+SIGCONT   19,18,25    Cont    Continue if stopped
+SIGSTOP   17,19,23    Stop    Stop process
+SIGTSTP   18,20,24    Stop    Stop typed at terminal
+SIGTTIN   21,21,26    Stop    Terminal input for background process
+SIGTTOU   22,22,27    Stop    Terminal output for background process
+
+The signals SIGKILL and SIGSTOP cannot be caught, blocked, or
+ignored.
+
+1. SIGHUP
+SIGHUP 控制终端结束或这父进程结束会收到
+
+command  >  out.file  2>&1  & 
+后台执行，并且标准输出和错误输出写到文件里
+
+nohup command > myout.file 2>&1 &
+nohup表示即使关掉终端，后台程序也保持运行，但前提是终端正常退出。
+
+2. SIGINT
+程序终止(interrupt)信号, 在用户键入INTR字符(通常是Ctrl-C)时发出，用于通知前台进程组终止进程。
+
+3. SIGQUIT
+和SIGINT类似, 但由QUIT字符(通常是Ctrl-\)来控制. 进程在因收到SIGQUIT退出时会产生core文件, 在这个意义上类似于一个程序错误信号。
+
+4. SIGABRT
+调用abort函数生成的信号。
+
+5. SIGFPE
+在发生致命的算术运算错误时发出. 不仅包括浮点运算错误, 还包括溢出及除数为0等其它所有的算术的错误。
+
+6. SIGKILL
+用来立即结束程序的运行. 本信号不能被阻塞、处理和忽略。如果管理员发现某个进程终止不了，可尝试发送这个信号。
+kill -9 pid
+
+7. SIGTERM
+程序结束(terminate)信号, 与SIGKILL不同的是该信号可以被阻塞和处理。通常用来要求程序自己正常退出，shell命令kill缺省产生这个信号。如果进程终止不了，我们才会尝试SIGKILL。
+kill pid
+
+8. SIGPIPE
+管道破裂。这个信号通常在进程间通信产生，比如采用FIFO(管道)通信的两个进程，读管道没打开或者意外终止就往管道写，写进程会收到SIGPIPE信号。
+这个很重要 ---> 此外用Socket通信的两个进程，写进程在写Socket的时候，读进程已经终止。
