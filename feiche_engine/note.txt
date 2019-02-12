@@ -61,3 +61,24 @@ kill pid
 8. SIGPIPE
 管道破裂。这个信号通常在进程间通信产生，比如采用FIFO(管道)通信的两个进程，读管道没打开或者意外终止就往管道写，写进程会收到SIGPIPE信号。
 这个很重要 ---> 此外用Socket通信的两个进程，写进程在写Socket的时候，读进程已经终止。
+
+9. SIGCHLD
+子进程结束时, 父进程会收到这个信号。
+如果父进程没有处理这个信号，也没有等待(wait)子进程，子进程虽然终止，但是还会在内核进程表中占有表项，这时的子进程称为僵尸进程。这种情况我们应该避免(父进程或者忽略SIGCHILD信号，或者捕捉它，或者wait它派生的子进程，或者父进程先终止，这时子进程的终止自动由init进程来接管)。
+
+
+
+//stdout 标准输出
+//stderr 标准错误
+//_IOLBF 行缓冲
+
+setvbuf(stdout, NULL, _IOLBF, 80);
+setvbuf(stderr, NULL, _IOLBF, 80);
+//SIGTERM kill正常退出
+signal(SIGTERM, sighandler);
+//SIGPIPE忽略这个新号，client发起连接，然后关闭读端，server往client发数据的时候，会收到这个信号，默认处理是关闭程序。
+if (sigignore(SIGPIPE) == -1)
+{
+	printf("CenterServer %lld: can not ignore SIGPIPE\n", (long long int)getpid());
+	return 1;
+}
