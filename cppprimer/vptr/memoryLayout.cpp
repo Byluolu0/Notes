@@ -96,6 +96,25 @@ public:
 };
 
 // 虚拟继承
+class E
+{
+public:
+    E(int i): data(i) { cout << "E::E" << endl; }
+    virtual void vf() { cout << "E::vf" << endl; }
+    virtual ~E() { cout << "E::~E" << endl; }
+    int data;
+};
+
+class DE: public virtual E
+{
+public:
+    DE(int i): E(i) { cout << "DE::DE" << endl; }
+    virtual void vf() { cout << "DE::vf" << endl; }
+    virtual ~DE() { cout << "DE::~DE" << endl; }
+};
+
+
+
 
 // 菱形继承
 
@@ -224,6 +243,20 @@ int main()
     Fun dd2h = (Fun) (address*)*(d2VtbPtr + 3); 
     dd2h();
     cout << "dd的vf1，d2中没有这个虚函数（但d1有），这里不补，只在第一个虚函数表补" << endl;
+
+    cout << "=== 虚拟继承 ===" << endl;
+    E e(1);
+    DE de(1);
+    cout << sizeof(e) << " " << sizeof(de) << endl;
+    
+    // 虚基类表指针
+    address* deVptr = (address*)*(address*)(&de);
+    // 下一位
+    long long nextContent = *((address*)(&de) + 1);
+    cout << nextContent << endl;
+
+    // data地址
+    cout << &de.data << endl;
 }
 
 /************
