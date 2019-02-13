@@ -103,42 +103,178 @@ void ThreadPool::runInThread()
 void ThreadPool::start(int numThreads)
 起numThreads个线程
 
-11. Timestamp
+todo
+  // FIXME: use unique_ptr<Timer> instead of raw pointers.
+  
+
+11. EventLoop 事件循环，包括网络事件和定时器事件。
+boost::scoped_ptr<Poller> poller_;
+轮询器
+std::vector<Functor> pendingFunctors_
+网络事件做完后，要调用的函数队列
+
+loop
+死循环，调poll取出活跃Channel，然后调用channel->handleEvent()处理。
+然后跑doPendingFunctors
+
+runInLoop
+直接调用或者放进doPendingFunctors
+
+runAt
+runAfter
+runEvery
+cancel
+定时器接口
+
+TimerId 保存Timer的引用和唯一整数标志
+
+wakeupFd_
+eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+把任务放进pendingFunctors_的时候，通过往eventfd里面写信息，唤醒poll，防止IO线程一直阻塞在poll里面，不处理刚加入的任务。
+
+12. Timer 定时器
+const TimerCallback callback_ 函数
+Timestamp expiration_ 过期时间
+const double interval_ 执行间隔
+const bool repeat_ 是否重复
+const int64_t sequence_ 唯一标志
+
+static AtomicInt64 s_numCreated_ 累加数，作为唯一标志
+
+13. TimerQueue 定时器队列
+const int timerfd_;
+
+createTimerfd
+利用timerfd_create
+
+int timerfd = ::timerfd_create(CLOCK_MONOTONIC,
+                                 TFD_NONBLOCK | TFD_CLOEXEC);
+创建一个系统定时器
+
+int timerfd_settime(int fd, int flags,
+                           const struct itimerspec *new_value,
+                           struct itimerspec *old_value);
+设置定时器的定时时间与间隔
+new_value 新的定时时间与间隔
+old_value 返回旧的定时时间与间隔
+
+struct timespec {
+   time_t tv_sec;                /* Seconds */
+   long   tv_nsec;               /* Nanoseconds */
+};
+
+struct itimerspec {
+   struct timespec it_interval;  /* Interval for periodic timer */
+   struct timespec it_value;     /* Initial expiration */
+};
+
+addTimerInLoop
+增加定时器
+
+getExpired
+取出到期的Timer
+
+handleRead
+取出到期的Timer，然后执行
+
+resetTimerfd
+使用系统调用timerfd_settime更新timerfd_的过期时间。
+在新增timer或timerfd_过期，调用timer的函数后都会调用resetTimerfd，更新timerfd_的过期时间。
+
+typedef std::pair<Timestamp, Timer*> Entry;
+typedef std::set<Entry> TimerList;
+TimerList timers_;
+按过期时间排序的定时器对象（用了set<std::pair<Timestamp, Timer*>>，会自动根据pair的first排序？）
+
+typedef std::pair<Timer*, int64_t> ActiveTimer;
+typedef std::set<ActiveTimer> ActiveTimerSet;
+ActiveTimerSet activeTimers_;
+这个应该是用于删除定时器时查找某Timer还在不在。
+
+ActiveTimerSet cancelingTimers_;
+删除某定时器的时候，如果定时器timefd正在执行，就先放进这里，后面再处理。
+
+综述
+a.timerfd_create创建定时器，放入Poller中监听
+b.addTimer增加一个定时器，放入队列，计算最早过期时间，然后更新timerfd的激活时间
+c.timerfd激活，处理所有到期定时器，如果是重复的，再次加入队列，否则删除。然后重新计算最早过期时间，更新timerfd的激活时间。
+d.删除定时器，如果正在执行handleRead，则放入临时队列，待执行完handleRead再处理，否则马上删除。
+
+总结
+EventLoop Poller Channel TimerQueue Timer的关系
+EventLoop::loop ---> Poller::poll ---> EventLoop::loop ---> Channel::handleEvent 
+                                                       ---> TimerQueue::handleRead ---> Timer:run
+                             
+接口
+Channel::enableXXX
+Channel::updateChannel
+
+EventLoop::runAt
+EventLoop::runAfter
+EventLoop::runEvery
+
+
+14. EventLoopThread
+开一个线程，创建一个新的EventLoop，然后跑loop
+
+15. EventLoopThreadPool
+EventLoopThread池
+EventLoopThreadPool::start 开启x个EventLoopThread。
+
+16. Acceptor 就是服务器监听socket的封装，以及监听，创建新的连接socket(newConnectionCallback_，callback形式传入)。
+Socket acceptSocket_;
+Channel acceptChannel_;
+NewConnectionCallback newConnectionCallback_;
+
+handleRead调用newConnectionCallback_，直接就能返回connfd, peerAddr
+
+17. TcpConnection tcp连接对象 
+Buffer inputBuffer_;
+Buffer outputBuffer_; 
+读写缓存
+
+boost::scoped_ptr<Channel> channel_;
+channel_的readCallback_设置为handleRead
+handleRead 从fd读数据到inputBuffer，并调用读回调
+channel_的writeCallback_设置为handleWrite
+handleWrite 将outputBuffer的数据写到fd，并调用写回调
+
+18. Timestamp
 时间的封装
 struct timeval tv;
 gettimeofday(&tv, NULL);
 struct tm tm_time;
 gmtime_r(&seconds, &tm_time);
 
-12. LogStream
+19. LogStream
 重载<< 以各种类型作为参数。
 buf保存log数据
 
-13. Logging
+20. Logging
 Logger
 定义了log等级和接口
 每次调用都创建一个logger，打印内容存在LogStream的buf里面，对象离开作用域后析构，这个时候打印。
 
-14. FileUtil
+21. FileUtil
 读写文件的封装
 
-15. LogFile
+22. LogFile
 写文件，包含滚日志逻辑。(即日志按时间段分割)
 
-16. AsyncLogging
+23. AsyncLogging
 异步log
 logging线程，把buffer列表里面的内容写到文件。
 提供append接口，内容写入buffer。
 
-17. GzipFile
+24. GzipFile
 zlib库的封装
 
-18. StringPiece
+25. StringPiece
 // A string like object that points into another piece of memory.
 // Useful for providing an interface that allows clients to easily
 // pass in either a "const char*" or a "string".
 
-19. WeakCallback
+26. WeakCallback
 弱引用版本的回调函数
 调用的时候，如果弱指针指向的对象还在的话，就调用，否则跳过。
 
@@ -146,7 +282,7 @@ zlib库的封装
 Traits classes 的作用主要是用来为使用者提供类型信息。
 使用模版特化 和 模版偏特化的技术
 
-20. Exception
+27. Exception
 异常处理 继承std::exception
 catch后会传入message错误信息
 还定义了trace_保存调用栈，使用了
@@ -161,7 +297,7 @@ PreMake可以自动生成多个平台的MakeFile
 
 net部分
 
-21. SocketsOps
+28. SocketsOps
 定义sockets命名空间，简化网络编程底层接口
 setNonBlockAndCloseOnExec 非阻塞+closeOnExec
 sockaddr_cast等 sockaddr_in 与 sockaddr的相互转换
@@ -182,7 +318,7 @@ getLocalAddr 通过fd获取socket本地地址
 getPeerAddr 通过fd获取socket对端地址
 isSelfConnect 判断自连接
 
-22. Socket
+29. Socket
 包含sockfd_
 配合InetAddress提供更友好的接口
 
@@ -199,7 +335,7 @@ SO_REUSEPORT
 
 SO_REUSEADDR
 
-23. InetAddress
+30. InetAddress
 sockaddr_in的封装
 
 [tip]
@@ -222,11 +358,11 @@ struct sockaddr{
     char          sa_data[14]       socket address (variable-length data)
 };
 
-24. Endian
+31. Endian
 主机字节序 和 网络字节序的转换
 uint64 uint32 uint16三个版本
 
-25. Buffer tcp连接的读写缓冲区
+32. Buffer tcp连接的读写缓冲区
 
 std::vector<char>
 分三部分
@@ -274,7 +410,7 @@ char extrabuf[65536];
 void *memchr(const void *s, int c, size_t n);
 scan memory for a character
 
-26. Channel 文件描述符及对其操作的封装
+33. Channel 文件描述符及对其操作的封装
 
 fd_ 文件描述符号
 index_ 在EventLoop中的索引
@@ -300,7 +436,7 @@ handleEvent
 update
 调用EventLoop的updateChannel去更新Channel的event，清空revent。
 
-27. Poller 轮询器
+34. Poller 轮询器
 ChannelList 轮询对象（包装了fd的对象）
 ChannelMap channels_ fd到对应channel的映射
 EventLoop* ownerLoop_ EventLoop的索引
@@ -321,14 +457,14 @@ virtual void updateChannel(Channel* channel) = 0;
 /// Must be called in the loop thread.
 virtual void removeChannel(Channel* channel) = 0;
 
-28. PollPoller 用poll实现的poller
+35. PollPoller 用poll实现的poller
 std::vector<struct pollfd> PollFdList pollfds_
 这么用
 int numEvents = ::poll(&*pollfds_.begin(), pollfds_.size(), timeoutMs);
 int savedErrno = errno;
 poll返回后，要for循环检查 pollfds_内是否有事件发生，epoll就不用了。
 
-29. EPollPoller 用epoll实现的poller
+36. EPollPoller 用epoll实现的poller
 epollfd_ epoll的fd
 与poll不同，epoll不用每次调用时候，都传入所有fd的信息。
 epoll的fd监听事件信息，内核有保存一份。
@@ -339,7 +475,7 @@ events_接收epoll_wait的返回，有多少个fd有事件，就给你返回多�
 
 
 
-30. TcpServer 概述
+37. TcpServer 概述
 主要成员
 EventLoop* loop_
 Acceptor acceptor_
@@ -358,23 +494,23 @@ TcpServer::start ---> EventLoopThreadPool::start ---> EventLoopThread::startLoop
 新连接到达 ---> Acceptor::handleRead ---> newConnectionCallback_(TcpServer::newConnection) ---> ioLoop = EventLoopThreadPool::getNextLoop
                                                                                            ---> 在ioLoop中创建连接
                                                                                            
-31. TcpConnection
+38. TcpConnection
 socket 到 业务代码的连接。
 handleRead设置为Channel的handleRead，检测到读事件后， TcpConnection::handleRead把数据读到读缓存，然后调用业务层设置的messageCallback_
 handleWrite设置为Channel的handleWrite，检测到写事件后，TcpConnection::handleWrite把写缓存的数据写到fd。
 
-32. TcpClient
+39. TcpClient
 
 TcpClient::TcpClient构造 创建Connector ---> Connector，设置TcpClient::newConnection
 TcpClient::connect --->  Connector::start ---> Connector::startInLoop --->  Connector::connect (同步的) ---> Connector::connecting
 连接成功，TcpClient::newConnection，创建TcpConnection，设置各种事件
 
-33. google::protobuf::io::ZeroCopyOutputStream 
+40. google::protobuf::io::ZeroCopyOutputStream 
 google protobuf 提供的避免内存拷贝的Stream。
 接口Next 申请一块内存，用于写入
 接口BackUp 归还多少内存
 
-34. HttpRequest
+41. HttpRequest
 
 Http协议请求的封装
 method url version\r\n
@@ -392,7 +528,7 @@ Accept-Language: zh-CN,zh;q=0.9
 
 
 
-35. HttpResponse 
+42. HttpResponse 
 
 Http协议返回的封装
 
@@ -415,14 +551,14 @@ X-Frame-Options: SAMEORIGIN
 appendToBuffer
 将协议返回内容依次写入缓冲区
 
-36. HttpContext
+43. HttpContext
 包含HttpRequest 和 HttpRequestParseState
 管理Http协议请求解析的各个阶段
 
-37. HttpServer
+44. HttpServer
 TcpServer
 
-38. ProtobufCodecLiteT
+45. ProtobufCodecLiteT
 void ProtobufCodecLite::fillEmptyBuffer(muduo::net::Buffer* buf,
                                         const google::protobuf::Message& message)
 利用 message提供的接口，把数据序列化，拷贝到buf。
