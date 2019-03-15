@@ -1,7 +1,7 @@
 #include "strblob.h"
 #include <iostream>
 #include <vector>
-#include <cassert>
+//#include <cassert>
 
 using std::vector;
 using std::cin;
@@ -22,7 +22,7 @@ vector<int>* newIntVector()
 
 void cinIntVector(vector<int>* vec)
 {
-	assert(vec != nullptr);
+	//assert(vec != nullptr);
 	int temp = 0;
 	while (cin >> temp)
 		vec->push_back(temp);
@@ -30,7 +30,7 @@ void cinIntVector(vector<int>* vec)
 
 void coutIntVector(vector<int>* vec)
 {
-	assert(vec != nullptr);
+	//assert(vec != nullptr);
 	for (vector<int>::iterator it = vec->begin(); it != vec->end(); ++it)
 	{
 		cout << *it << " ";
